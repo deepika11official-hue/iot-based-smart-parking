@@ -1,0 +1,78 @@
+#include <ESP8266WiFi.h>  // Or use <WiFi.h> for ESP32
+#include <String.h>
+
+#define WIFI_SSID "YourWiFiName"
+#define WIFI_PASSWORD "123456789"  // Replace with your WiFi password
+
+int trigPin = 5;  // GPIO5 = D1 on NodeMCU
+int echoPin = 4;  // GPIO4 = D2 on NodeMCU
+
+#define SOUND_SPEED 0.034
+#define CM_TO_INCH 0.393701
+
+long duration;
+float distanceCm;
+float distanceInch;
+bool isDetected;
+
+WiFiClient client;
+const char* host = "example.com";  // Change to your server
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  Serial.print("Connecting to WiFi");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+}
+
+void loop() {
+  // Send a 10us pulse to trigger the sensor
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  duration = pulseIn(echoPin, HIGH);
+  distanceCm = duration * SOUND_SPEED / 2;
+  distanceInch = distanceCm * CM_TO_INCH;
+
+  Serial.print("Distance (cm): ");
+  Serial.println(distanceCm);
+
+  // For example: detect if object is within 20 cm
+  if (distanceCm < 20.0) {
+    isDetected = true;
+  } else {
+    isDetected = false;
+  }
+
+  // Send data to server
+  if (client.connect(host, 80)) {
+    String url = "/update?distance=" + String(distanceCm) + "&detected=" + String(isDetected);
+    Serial.print("Requesting URL: ");
+    Serial.println(url);
+
+    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+                 "Host: " + host + "\r\n" +
+                 "Connection: close\r\n\r\n");
+    delay(10);
+
+    while (client.available()) {
+      String line = client.readStringUntil('\r');
+      Serial.print(line);
+    }
+    client.stop();
+  } else {
+    Serial.println("Connection to server failed.");
+  }
+
+  delay(2000);  // Wait 2 seconds before next measurement
+}
